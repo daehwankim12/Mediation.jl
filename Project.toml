@@ -1,0 +1,4 @@
+name = "Mediation"
+uuid = "fe241b1f-4930-4d15-822a-c014ccac06d3"
+authors = ["Kerby Shedden <kshedden@umich.edu>"]
+version = "0.1.0"
