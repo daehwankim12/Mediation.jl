@@ -12,8 +12,8 @@ using Test, GLM, DataFrames, Mediation, Random
     y = 1.5 * m + 0.5 .* x + randn(n) # partial mediation
     da = DataFrame(:y => y, :m => m, :x => x)
 
-    m1 = lm(@formula(m ~ x), da)
-    m2 = lm(@formula(y ~ m + x), da)
+    m1 = Model(LinearModel, @formula(m ~ x))
+    m2 = Model(LinearModel, @formula(y ~ m + x))
 
     r = mediate(m1, m2, da, :x, :m, :y, expvals = [0, 1])
 
@@ -35,8 +35,8 @@ end
     y = [rand() < pr[i] ? 1 : 0 for i = 1:n]
     da = DataFrame(:y => y, :m => m, :x => x)
 
-    m1 = lm(@formula(m ~ x), da)
-    m2 = glm(@formula(y ~ m + x), da, Binomial())
+    m1 = Model(LinearModel, @formula(m ~ x))
+    m2 = Model(GeneralizedLinearModel, @formula(y ~ m + x), Binomial())
 
     r = mediate(m1, m2, da, :x, :m, :y, expvals = [0, 1])
 

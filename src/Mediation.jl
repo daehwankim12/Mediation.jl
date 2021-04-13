@@ -2,9 +2,7 @@ module Mediation
 
 using GLM
 
-using StatsBase: RegressionModel
-
-export mediate
+export mediate, Model
 
 include("mediate.jl")
 

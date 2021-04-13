@@ -4,7 +4,8 @@ da = open("framing.csv") do io
     CSV.read(io, DataFrame)
 end
 
-m1 = lm(@formula(emo ~ treat + age + educ + gender + income), da)
-m2 = glm(@formula(cong_mesg ~ emo + treat + age + educ + gender + income), da, Binomial())
+med = Model(LinearModel, @formula(emo ~ treat + age + educ + gender + income))
 
-r = mediate(m1, m2, da, :treat, :emo, :cong_mesg)
+out = Model(GeneralizedLinearModel, @formula(cong_mesg ~ emo + treat + age + educ + gender + income), Binomial())
+
+r = mediate(med, out, da, :treat, :emo, :cong_mesg; pertmeth=:bootstrap)
