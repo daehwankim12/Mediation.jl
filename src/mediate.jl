@@ -1,4 +1,4 @@
-using DataFrames, StatsModels, LinearAlgebra, Statistics, Distributions
+using DataFrames, StatsModels, LinearAlgebra, Statistics, Distributions, StatsBase
 
 # Model wrappers borrowed from github.com/juliagehring/Bootstrap.jl.
 
@@ -20,36 +20,77 @@ struct FormulaModel{T,A,K} <: Model
 end
 
 Model(class, formula::FormulaTerm, args...; kwargs...) =
-        FormulaModel(class, formula, args, kwargs)
+    FormulaModel(class, formula, args, kwargs)
 
+abstract type ParameterPerturber end
 
-# Return a draw from the approximate sampling distribution of the
-# model parameters.
-function pert_asymp(m::StatsModels.TableRegressionModel)::Array{Float64,1}
+mutable struct AsymptoticPerturber <: ParameterPerturber
+    r::Cholesky
+    par0::Array{Float64,1}
+end
 
+# Perturb the parameters as a draw from the asymptotic Gaussian approximation to
+# the sampling distribution of the parameters.
+function AsymptoticPerturber(m::StatsModels.TableRegressionModel)::ParameterPerturber
     c = vcov(m.model)
     r = cholesky(c)
     par0 = coef(m.model)
-    p = length(par0)
-    par = par0 + r.L * randn(p)
-    return par
+    return AsymptoticPerturber(r, par0)
+end
 
+# Return a draw from the approximate sampling distribution of the
+# model parameters.
+function sample(pt::AsymptoticPerturber)::Array{Float64,1}
+    p = length(pt.par0)
+    return pt.par0 + pt.r.L * randn(p)
+end
+
+mutable struct BootstrapPerturber <: ParameterPerturber
+    m::FormulaModel
+    y::Array{Float64,1}
+    x::Array{Float64,2}
 end
 
 # Return a draw from the approximate sampling distribution of the
 # model parameters using bootstrapping.
-function pert_boot(m::FormulaModel, y::Array{Float64,1}, x::Array{Float64,2})::Array{Float64,1}
-
-    n = length(y)
+function sample(pt::BootstrapPerturber)::Array{Float64,1}
+    n = length(pt.y)
     ii = collect(1:n)
-    ix = sample(ii, n, replace=true)
-    r = fit(m.class, x[ii, :], y[ii], m.args...; m.kwargs...)
+    ix = StatsBase.sample(ii, n, replace = true)
+    r = fit(pt.m.class, pt.x[ii, :], pt.y[ii], pt.m.args...; pt.m.kwargs...)
     return coef(r)
-
 end
 
 
-function genrand(d::Normal{Float64}, lp::Array{Array{Float64,1}}, di::Float64, yy::Array{Float64,2})
+function getPerturber(
+    ::Type{AsymptoticPerturber},
+    m::FormulaModel,
+    ft::FormulaTerm,
+    f::RegressionModel,
+    x::AbstractDataFrame,
+)
+    return AsymptoticPerturber(f)
+end
+
+function getPerturber(
+    ::Type{BootstrapPerturber},
+    m::FormulaModel,
+    ft::FormulaTerm,
+    f::RegressionModel,
+    x::AbstractDataFrame,
+)
+    y, x = modelcols(ft, x)
+    y = convert.(Float64, y)
+    return BootstrapPerturber(m, y, x)
+end
+
+
+function genrand(
+    d::Normal{Float64},
+    lp::Array{Array{Float64,1}},
+    di::Float64,
+    yy::Array{Float64,2},
+)
     for (j, ll) in enumerate(lp)
         for i in eachindex(ll)
             yy[i, j] = ll[i] + di * randn()
@@ -57,7 +98,12 @@ function genrand(d::Normal{Float64}, lp::Array{Array{Float64,1}}, di::Float64, y
     end
 end
 
-function genrand(d::Binomial{Float64}, lp::Array{Array{Float64,1}}, di::Float64, yy::Array{Float64,2})
+function genrand(
+    d::Binomial{Float64},
+    lp::Array{Array{Float64,1}},
+    di::Float64,
+    yy::Array{Float64,2},
+)
     for (j, ll) in enumerate(lp)
         for i in eachindex(ll)
             yy[i, j] = rand() < 1 / (1 + exp(-ll[i])) ? 1 : 0
@@ -65,7 +111,12 @@ function genrand(d::Binomial{Float64}, lp::Array{Array{Float64,1}}, di::Float64,
     end
 end
 
-function genrand(d::Poisson{Float64}, lp::Array{Array{Float64,1}}, di::Float64, yy::Array{Float64,2})
+function genrand(
+    d::Poisson{Float64},
+    lp::Array{Array{Float64,1}},
+    di::Float64,
+    yy::Array{Float64,2},
+)
     for (j, ll) in enumerate(lp)
         for i in eachindex(ll)
             yy[i, j] = rand(Poisson(exp(ll[i])))
@@ -73,8 +124,8 @@ function genrand(d::Poisson{Float64}, lp::Array{Array{Float64,1}}, di::Float64, 
     end
 end
 
-# ppred takes a fitted regression model m and a dataframe x that
 # contains all the variables in m.  Then the regression parameters in
+# ppred takes a fitted regression model m and a dataframe x that
 # m are perturbed using a Gaussian approximation with covariance equal
 # to their sampling covariance matrix.  Next the variables in x are
 # used to form predicted values of the linear predictor using the
@@ -82,27 +133,18 @@ end
 # distribution of the model are made, conditionally on the linear
 # predictor.
 function ppred(
-    m::FormulaModel,
     f::StatsModels.TableRegressionModel,
     x::AbstractDataFrame,
-    y_m::Array{Float64,1},
-    x_m::Array{Float64,2},
+    pt::ParameterPerturber,
     xl::Array{DataFrame,1},
-    pertmeth::Symbol
 )::Array{Float64,2}
 
     n = size(xl[1], 1)
 
     # Get the perturbed parameters
-    if pertmeth == :asymptotic
-        par = pert_asymp(f)
-    elseif pertmeth == :bootstrap
-        par = pert_boot(m, y_m, x_m)
-    else
-        error("Unknown parameter perturbation method")
-    end
+    par = sample(pt)
 
-    # Generate a dataframe using the formula
+    # Generate dataframes using the formula
     xf = []
     for x in xl
         fs = apply_schema(f.mf.f, schema(f.mf.f, x))
@@ -158,23 +200,18 @@ function mediate(
     md::Symbol,
     ot::Symbol;
     expvals = [0, 1],
-    pertmeth = :asymptotic,
+    pert = AsymptoticPerturber,
     nrep::Int = 1000,
 )
 
     # Fit both models with full data
-    fml_med = apply_schema(m_med.formula, schema(m_med.formula, x), m_med.class)
-    f_med = fit(m_med.class, fml_med, x, m_med.args...; m_med.kwargs...)
-    fml_out = apply_schema(m_out.formula, schema(m_out.formula, x), m_out.class)
-    f_out = fit(m_out.class, fml_out, x, m_out.args...; m_out.kwargs...)
+    ft_med = apply_schema(m_med.formula, schema(m_med.formula, x), m_med.class)
+    fit_med = fit(m_med.class, ft_med, x, m_med.args...; m_med.kwargs...)
+    ft_out = apply_schema(m_out.formula, schema(m_out.formula, x), m_out.class)
+    fit_out = fit(m_out.class, ft_out, x, m_out.args...; m_out.kwargs...)
 
-    y_med, x_med, y_out, x_out = zeros(0), zeros(0, 0), zeros(0), zeros(0, 0)
-    if pertmeth == :bootstrap
-        y_med, x_med = modelcols(fml_med, x)
-        y_med = convert.(Float64, y_med)
-        y_out, x_out = modelcols(fml_out, x)
-        y_out = convert.(Float64, y_out)
-    end
+    medpert = getPerturber(pert, m_med, ft_med, fit_med, x)
+    outpert = getPerturber(pert, m_out, ft_out, fit_out, x)
 
     rslt = DataFrame(
         :Name => [
@@ -205,7 +242,7 @@ function mediate(
         for j in eachindex(expvals)
             xx[j][!, ex] .= expvals[j]
         end
-        z = ppred(m_med, f_med, x, y_med, x_med, xx[1:2], pertmeth)
+        z = ppred(fit_med, x, medpert, xx[1:2])
         for j in eachindex(expvals)
             xx[j][!, md] = z[:, j]
             xx[j+2][!, md] = z[:, j]
@@ -214,7 +251,7 @@ function mediate(
             xx[2*j-1][!, ex] .= expvals[j]
             xx[2*j][!, ex] .= expvals[j]
         end
-        yy = ppred(m_out, f_out, x, y_out, x_out, xx, pertmeth)
+        yy = ppred(fit_out, x, outpert, xx)
 
         # If an outcome is observed, we don't
         # need to simulate it.

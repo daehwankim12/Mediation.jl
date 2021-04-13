@@ -2,7 +2,7 @@ module Mediation
 
 using GLM
 
-export mediate, Model
+export mediate, Model, AsymptoticPerturber, BootstrapPerturber
 
 include("mediate.jl")
 

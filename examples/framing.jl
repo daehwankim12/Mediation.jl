@@ -8,4 +8,4 @@ med = Model(LinearModel, @formula(emo ~ treat + age + educ + gender + income))
 
 out = Model(GeneralizedLinearModel, @formula(cong_mesg ~ emo + treat + age + educ + gender + income), Binomial())
 
-r = mediate(med, out, da, :treat, :emo, :cong_mesg; pertmeth=:bootstrap)
+r = mediate(med, out, da, :treat, :emo, :cong_mesg; pert=BootstrapPerturber)
