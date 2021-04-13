@@ -24,9 +24,9 @@ Model(class, formula::FormulaTerm, args...; kwargs...) =
 
 abstract type ParameterPerturber end
 
-mutable struct AsymptoticPerturber <: ParameterPerturber
+mutable struct AsymptoticPerturber{T} <: ParameterPerturber where {T <: AbstractFloat}
     r::Cholesky
-    par0::Array{Float64,1}
+    par0::Array{T,1}
 end
 
 # Perturb the parameters as a draw from the asymptotic Gaussian approximation to
@@ -40,27 +40,26 @@ end
 
 # Return a draw from the approximate sampling distribution of the
 # model parameters.
-function sample(pt::AsymptoticPerturber)::Array{Float64,1}
+function par_sample(pt::AsymptoticPerturber{T})::Array{T,1} where {T <: AbstractFloat}
     p = length(pt.par0)
-    return pt.par0 + pt.r.L * randn(p)
+    return pt.par0 + pt.r.L * randn(T, p)
 end
 
-mutable struct BootstrapPerturber <: ParameterPerturber
+mutable struct BootstrapPerturber{T} <: ParameterPerturber where {T <: AbstractFloat}
     m::FormulaModel
-    y::Array{Float64,1}
-    x::Array{Float64,2}
+    y::Array{T,1}
+    x::Array{T,2}
 end
 
 # Return a draw from the approximate sampling distribution of the
 # model parameters using bootstrapping.
-function sample(pt::BootstrapPerturber)::Array{Float64,1}
+function par_sample(pt::BootstrapPerturber{T})::Array{T,1} where {T <: AbstractFloat}
     n = length(pt.y)
     ii = collect(1:n)
     ix = StatsBase.sample(ii, n, replace = true)
     r = fit(pt.m.class, pt.x[ii, :], pt.y[ii], pt.m.args...; pt.m.kwargs...)
     return coef(r)
 end
-
 
 function getPerturber(
     ::Type{AsymptoticPerturber},
@@ -83,7 +82,6 @@ function getPerturber(
     y = convert.(Float64, y)
     return BootstrapPerturber(m, y, x)
 end
-
 
 function genrand(
     d::Normal{Float64},
@@ -124,17 +122,11 @@ function genrand(
     end
 end
 
-# contains all the variables in m.  Then the regression parameters in
-# ppred takes a fitted regression model m and a dataframe x that
-# m are perturbed using a Gaussian approximation with covariance equal
-# to their sampling covariance matrix.  Next the variables in x are
-# used to form predicted values of the linear predictor using the
-# perturbed model parameters.  Finally, draws from the predictive
-# distribution of the model are made, conditionally on the linear
-# predictor.
+# Simulate responses from the regression model 'f', after perturbing
+# the parameters using the parameter perturber 'pt'.  Simulated values
+# are generated for each set of predictor variables in 'xl'.
 function ppred(
     f::StatsModels.TableRegressionModel,
-    x::AbstractDataFrame,
     pt::ParameterPerturber,
     xl::Array{DataFrame,1},
 )::Array{Float64,2}
@@ -142,7 +134,7 @@ function ppred(
     n = size(xl[1], 1)
 
     # Get the perturbed parameters
-    par = sample(pt)
+    par = par_sample(pt)
 
     # Generate dataframes using the formula
     xf = []
@@ -242,7 +234,7 @@ function mediate(
         for j in eachindex(expvals)
             xx[j][!, ex] .= expvals[j]
         end
-        z = ppred(fit_med, x, medpert, xx[1:2])
+        z = ppred(fit_med, medpert, xx[1:2])
         for j in eachindex(expvals)
             xx[j][!, md] = z[:, j]
             xx[j+2][!, md] = z[:, j]
@@ -251,7 +243,7 @@ function mediate(
             xx[2*j-1][!, ex] .= expvals[j]
             xx[2*j][!, ex] .= expvals[j]
         end
-        yy = ppred(fit_out, x, outpert, xx)
+        yy = ppred(fit_out, outpert, xx)
 
         # If an outcome is observed, we don't
         # need to simulate it.
