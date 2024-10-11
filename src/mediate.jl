@@ -272,6 +272,12 @@ function mediate(
 
     end
 
+    ind0 = convert(Vector{Float64}, ind0)
+    ind1 = convert(Vector{Float64}, ind1)
+    dir0 = convert(Vector{Float64}, dir0)
+    dir1 = convert(Vector{Float64}, dir1)
+    tot = convert(Vector{Float64}, tot)
+
     rslt[1, 2:end] = [mean(ind1), std(ind1), quantile(ind1, 0.025), quantile(ind1, 0.975), compute_p_value(ind1)]
     rslt[2, 2:end] = [mean(ind0), std(ind0), quantile(ind0, 0.025), quantile(ind0, 0.975), compute_p_value(ind0)]
     rslt[3, 2:end] = [mean(dir1), std(dir1), quantile(dir1, 0.025), quantile(dir1, 0.975), compute_p_value(dir1)]
