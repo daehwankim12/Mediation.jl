@@ -163,6 +163,12 @@ function ppred(
 
 end
 
+function compute_p_value(bootstrap_samples::Vector{Float64}, estimate::Float64=0.0)
+    p_lower = mean(bootstrap_samples .< estimate)
+    p_upper = mean(bootstrap_samples .> estimate)
+    return 2 * min(p_lower, p_upper)
+end
+
 
 """
     mediate(m_med, m_out, x, ex, md, ot; expvals, nrep)
