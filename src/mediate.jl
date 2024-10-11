@@ -223,6 +223,7 @@ function mediate(
         :StdErr => zeros(5),
         :LCB => zeros(5),
         :UCB => zeros(5),
+        :pvalue => zeros(5)
     )
 
     n = size(x, 1)
@@ -271,11 +272,11 @@ function mediate(
 
     end
 
-    rslt[1, 2:end] = [mean(ind1), std(ind1), quantile(ind1, 0.025), quantile(ind1, 0.975)]
-    rslt[2, 2:end] = [mean(ind0), std(ind0), quantile(ind0, 0.025), quantile(ind0, 0.975)]
-    rslt[3, 2:end] = [mean(dir1), std(dir1), quantile(dir1, 0.025), quantile(dir1, 0.975)]
-    rslt[4, 2:end] = [mean(dir0), std(dir0), quantile(dir0, 0.025), quantile(dir0, 0.975)]
-    rslt[5, 2:end] = [mean(tot), std(tot), quantile(tot, 0.025), quantile(tot, 0.975)]
+    rslt[1, 2:end] = [mean(ind1), std(ind1), quantile(ind1, 0.025), quantile(ind1, 0.975), compute_p_value(ind1)]
+    rslt[2, 2:end] = [mean(ind0), std(ind0), quantile(ind0, 0.025), quantile(ind0, 0.975), compute_p_value(ind0)]
+    rslt[3, 2:end] = [mean(dir1), std(dir1), quantile(dir1, 0.025), quantile(dir1, 0.975), compute_p_value(dir1)]
+    rslt[4, 2:end] = [mean(dir0), std(dir0), quantile(dir0, 0.025), quantile(dir0, 0.975), compute_p_value(dir0)]
+    rslt[5, 2:end] = [mean(tot), std(tot), quantile(tot, 0.025), quantile(tot, 0.975), compute_p_value(tot)]
 
     return rslt
 
